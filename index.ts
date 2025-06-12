@@ -453,6 +453,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["cards", "easeFactors"],
         },
       },
+      {
+        name: "get_all_cards_in_deck",
+        description: "Returns all cards in a specified deck regardless of their review status (new, due, suspended, etc.).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deck: {
+              type: "string",
+              description: "Name of the deck to get all cards from",
+            },
+          },
+          required: ["deck"],
+        },
+      },
     ],
   };
 });
@@ -749,6 +763,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: "text",
               text: `Set ease factors for ${cardIds.length} cards`,
+            },
+          ],
+        };
+      }
+
+      case "get_all_cards_in_deck": {
+        const deckName = String(args.deck);
+        const query = `deck:"${deckName}"`;
+        const cards = await findCardsAndOrder(query);
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(cards),
             },
           ],
         };
