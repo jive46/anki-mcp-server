@@ -16,13 +16,21 @@ This is an MCP (Model Context Protocol) server that connects to a locally runnin
 ### Core Components
 
 - **Resources**: Expose Anki card collections via `anki://` URI scheme with filters (`deck:current`, `is:due`, `is:new`)
-- **Tools**: Ten main tools for comprehensive Anki management:
+- **Tools**: Eighteen main tools for comprehensive Anki management:
   
   **Card Management:**
   - `update_cards`: Mark cards as answered with ease ratings (1-4)
   - `add_card`: Create new flashcards (requires HTML formatting)
   - `get_due_cards`: Retrieve cards due for review
   - `get_new_cards`: Retrieve new/unseen cards
+  - `get_cards_info`: Get detailed card information (question, answer, due date, etc.)
+  - `suspend_cards`: Suspend cards to prevent them from appearing in reviews
+  - `unsuspend_cards`: Unsuspend cards to allow them in reviews again
+  - `check_suspended_status`: Check if cards are currently suspended
+  - `check_due_status`: Check if cards are currently due for review
+  - `forget_cards`: Reset cards to 'new' status, removing review history
+  - `get_ease_factors`: Retrieve ease factors for cards
+  - `set_ease_factors`: Set ease factors for cards
   
   **Deck Management:**
   - `list_decks`: Get all deck names

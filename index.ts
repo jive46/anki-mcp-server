@@ -310,6 +310,149 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["cards", "deck"],
         },
       },
+      {
+        name: "get_cards_info",
+        description: "Retrieves detailed information about specific cards including question, answer, due date, and more.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            cards: {
+              type: "array",
+              items: {
+                type: "number",
+              },
+              description: "Array of card IDs to get information for",
+            },
+          },
+          required: ["cards"],
+        },
+      },
+      {
+        name: "suspend_cards",
+        description: "Suspends cards to prevent them from appearing in reviews.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            cards: {
+              type: "array",
+              items: {
+                type: "number",
+              },
+              description: "Array of card IDs to suspend",
+            },
+          },
+          required: ["cards"],
+        },
+      },
+      {
+        name: "unsuspend_cards",
+        description: "Unsuspends cards to allow them to appear in reviews again.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            cards: {
+              type: "array",
+              items: {
+                type: "number",
+              },
+              description: "Array of card IDs to unsuspend",
+            },
+          },
+          required: ["cards"],
+        },
+      },
+      {
+        name: "check_suspended_status",
+        description: "Checks if specified cards are currently suspended.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            cards: {
+              type: "array",
+              items: {
+                type: "number",
+              },
+              description: "Array of card IDs to check suspension status for",
+            },
+          },
+          required: ["cards"],
+        },
+      },
+      {
+        name: "check_due_status",
+        description: "Checks if specified cards are currently due for review.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            cards: {
+              type: "array",
+              items: {
+                type: "number",
+              },
+              description: "Array of card IDs to check due status for",
+            },
+          },
+          required: ["cards"],
+        },
+      },
+      {
+        name: "forget_cards",
+        description: "Resets cards to 'new' status, removing their review history.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            cards: {
+              type: "array",
+              items: {
+                type: "number",
+              },
+              description: "Array of card IDs to reset to new status",
+            },
+          },
+          required: ["cards"],
+        },
+      },
+      {
+        name: "get_ease_factors",
+        description: "Retrieves ease factors for specified cards.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            cards: {
+              type: "array",
+              items: {
+                type: "number",
+              },
+              description: "Array of card IDs to get ease factors for",
+            },
+          },
+          required: ["cards"],
+        },
+      },
+      {
+        name: "set_ease_factors",
+        description: "Sets ease factors for specified cards.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            cards: {
+              type: "array",
+              items: {
+                type: "number",
+              },
+              description: "Array of card IDs to set ease factors for",
+            },
+            easeFactors: {
+              type: "array",
+              items: {
+                type: "number",
+              },
+              description: "Array of ease factor values (must match cards array length)",
+            },
+          },
+          required: ["cards", "easeFactors"],
+        },
+      },
     ],
   };
 });
@@ -488,6 +631,124 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: "text",
               text: `Moved ${cardIds.length} cards to deck "${targetDeck}"`,
+            },
+          ],
+        };
+      }
+
+      case "get_cards_info": {
+        const cardIds = args.cards as number[];
+        const cardsInfo = await client.card.cardsInfo({ cards: cardIds });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(cardsInfo, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "suspend_cards": {
+        const cardIds = args.cards as number[];
+        await client.card.suspend({ cards: cardIds });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Suspended ${cardIds.length} cards: ${cardIds.join(", ")}`,
+            },
+          ],
+        };
+      }
+
+      case "unsuspend_cards": {
+        const cardIds = args.cards as number[];
+        await client.card.unsuspend({ cards: cardIds });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Unsuspended ${cardIds.length} cards: ${cardIds.join(", ")}`,
+            },
+          ],
+        };
+      }
+
+      case "check_suspended_status": {
+        const cardIds = args.cards as number[];
+        const suspendedStatus = await client.card.areSuspended({ cards: cardIds });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(suspendedStatus),
+            },
+          ],
+        };
+      }
+
+      case "check_due_status": {
+        const cardIds = args.cards as number[];
+        const dueStatus = await client.card.areDue({ cards: cardIds });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(dueStatus),
+            },
+          ],
+        };
+      }
+
+      case "forget_cards": {
+        const cardIds = args.cards as number[];
+        await client.card.forgetCards({ cards: cardIds });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Reset ${cardIds.length} cards to new status: ${cardIds.join(", ")}`,
+            },
+          ],
+        };
+      }
+
+      case "get_ease_factors": {
+        const cardIds = args.cards as number[];
+        const easeFactors = await client.card.getEaseFactors({ cards: cardIds });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(easeFactors),
+            },
+          ],
+        };
+      }
+
+      case "set_ease_factors": {
+        const cardIds = args.cards as number[];
+        const easeFactors = args.easeFactors as number[];
+
+        if (cardIds.length !== easeFactors.length) {
+          throw new Error("Cards and easeFactors arrays must have the same length");
+        }
+
+        await client.card.setEaseFactors({ cards: cardIds, easeFactors: easeFactors });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Set ease factors for ${cardIds.length} cards`,
             },
           ],
         };
