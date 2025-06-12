@@ -47,24 +47,24 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
   return {
     resources: [
       {
-        uri: "anki://search/deckcurrent",
+        uri: "anki://search/deck:current",
         mimeType: "application/json",
         name: "Current Deck",
-        description: "Current Anki deck"
+        description: "Current Anki deck",
       },
       {
-        uri: "anki://search/isdue",
+        uri: "anki://search/is:due",
         mimeType: "application/json",
         name: "Due cards",
-        description: "Cards in review and learning waiting to be studied"
+        description: "Cards in review and learning waiting to be studied",
       },
       {
-        uri: "anki://search/isnew",
-        mimiType: "application/json",
+        uri: "anki://search/is:new",
+        mimeType: "application/json", // Fixed typo: was "mimiType"
         name: "New cards",
-        description: "All unseen cards"
-      }
-    ]
+        description: "All unseen cards",
+      },
+    ],
   };
 });
 
@@ -73,70 +73,74 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
  */
 server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   const url = new URL(request.params.uri);
-  const query = url.pathname.split("/").pop();
+  let query = url.pathname.split("/").pop();
   if (!query) {
     throw new Error("Invalid resource URI");
   }
 
+  // Decode URI components to handle colons and other special characters
+  query = decodeURIComponent(query);
+
   const cards = await findCardsAndOrder(query);
 
   return {
-    contents: [{
-      uri: request.params.uri,
-      mimeType: "application/json",
-      text: JSON.stringify(cards)
-    }]
+    contents: [
+      {
+        uri: request.params.uri,
+        mimeType: "application/json",
+        text: JSON.stringify(cards),
+      },
+    ],
   };
 });
 
 // Returns a list of cards ordered by due date
 async function findCardsAndOrder(query: string): Promise<Card[]> {
+  console.error(`Debug: Searching for cards with query: "${query}"`);
   const cardIds = await client.card.findCards({
-    query: formatQuery(query)
+    query: query, // Use query directly - no formatting needed
   });
-  const cards: Card[] = (await client.card.cardsInfo({ cards: cardIds })).map(card => ({
-    cardId: card.cardId,
-    question: cleanWithRegex(card.question),
-    answer: cleanWithRegex(card.answer),
-    due: card.due
-  })).sort((a: Card, b: Card) => a.due - b.due);
+
+  if (cardIds.length === 0) {
+    return [];
+  }
+
+  const cards: Card[] = (await client.card.cardsInfo({ cards: cardIds }))
+    .map((card) => ({
+      cardId: card.cardId,
+      question: cleanWithRegex(card.question),
+      answer: cleanWithRegex(card.answer),
+      due: card.due,
+    }))
+    .sort((a: Card, b: Card) => a.due - b.due);
 
   return cards;
 }
 
-// Formats the uri to be a proper query
-function formatQuery(query: string): string {
-  if (query.startsWith("deck")) {
-    return `deck:${query.slice(4)}`;
-  }
-  if (query.startsWith("is")) {
-    return `is:${query.slice(2)}`;
-  }
-  return query;
-}
-
 // Strip away formatting that isn't necessary
 function cleanWithRegex(htmlString: string): string {
-  return htmlString
-    // Remove style tags and their content
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    // Replace divs with newlines
-    .replace(/<div[^>]*>/g, '\n')
-    // Remove all HTML tags
-    .replace(/<[^>]+>/g, ' ')
-    // Remove anki play tags
-    .replace(/\[anki:play:[^\]]+\]/g, '')
-    // Convert HTML entities
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    // Clean up whitespace but preserve newlines
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => line.length > 0)
-    .join('\n');
+  return (
+    htmlString
+      // Remove style tags and their content
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+      // Replace divs with newlines
+      .replace(/<div[^>]*>/g, "\n")
+      // Remove all HTML tags
+      .replace(/<[^>]+>/g, " ")
+      // Remove anki play tags
+      .replace(/\[anki:play:[^\]]+\]/g, "")
+      // Convert HTML entities
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      // Clean up whitespace but preserve newlines
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .join("\n")
+  );
 }
 
 /**
@@ -147,7 +151,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "update_cards",
-        description: "After the user answers cards you've quizzed them on, use this tool to mark them answered and update their ease",
+        description:
+          "After the user answers cards you've quizzed them on, use this tool to mark them answered and update their ease",
         inputSchema: {
           type: "object",
           properties: {
@@ -158,35 +163,39 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 properties: {
                   cardId: {
                     type: "number",
-                    description: "Id of the card to answer"
+                    description: "Id of the card to answer",
                   },
                   ease: {
                     type: "number",
-                    description: "Ease of the card between 1 (Again) and 4 (Easy)"
-                  }
-                }
-              }
-            }
+                    description:
+                      "Ease of the card between 1 (Again) and 4 (Easy)",
+                  },
+                },
+              },
+            },
           },
-        }
+        },
       },
       {
         name: "add_card",
-        description: "Create a new flashcard in Anki for the user. Must use HTML formatting only. IMPORTANT FORMATTING RULES:\n1. Must use HTML tags for ALL formatting - NO markdown\n2. Use <br> for ALL line breaks\n3. For code blocks, use <pre> with inline CSS styling\n4. Example formatting:\n   - Line breaks: <br>\n   - Code: <pre style=\"background-color: transparent; padding: 10px; border-radius: 5px;\">\n   - Lists: <ol> and <li> tags\n   - Bold: <strong>\n   - Italic: <em>",
+        description:
+          'Create a new flashcard in Anki for the user. Must use HTML formatting only. IMPORTANT FORMATTING RULES:\n1. Must use HTML tags for ALL formatting - NO markdown\n2. Use <br> for ALL line breaks\n3. For code blocks, use <pre> with inline CSS styling\n4. Example formatting:\n   - Line breaks: <br>\n   - Code: <pre style="background-color: transparent; padding: 10px; border-radius: 5px;">\n   - Lists: <ol> and <li> tags\n   - Bold: <strong>\n   - Italic: <em>',
         inputSchema: {
           type: "object",
           properties: {
             front: {
               type: "string",
-              description: "The front of the card. Must use HTML formatting only."
+              description:
+                "The front of the card. Must use HTML formatting only.",
             },
             back: {
               type: "string",
-              description: "The back of the card. Must use HTML formatting only."
-            }
+              description:
+                "The back of the card. Must use HTML formatting only.",
+            },
           },
-          required: ["front", "back"]
-        }
+          required: ["front", "back"],
+        },
       },
       {
         name: "get_due_cards",
@@ -196,10 +205,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             num: {
               type: "number",
-              description: "Number of due cards to get"
-            }
+              description: "Number of due cards to get",
+            },
           },
-          required: ["num"]
+          required: ["num"],
         },
       },
       {
@@ -210,18 +219,103 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             num: {
               type: "number",
-              description: "Number of new cards to get"
-            }
+              description: "Number of new cards to get",
+            },
           },
-          required: ["num"]
+          required: ["num"],
         },
-      }
-    ]
+      },
+      {
+        name: "list_decks",
+        description: "Returns a list of all deck names in Anki.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
+      {
+        name: "list_decks_with_ids",
+        description: "Returns a dictionary of deck names and their corresponding IDs.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
+      {
+        name: "create_deck",
+        description: "Creates a new empty deck in Anki.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deck: {
+              type: "string",
+              description: "Name of the new deck to create",
+            },
+          },
+          required: ["deck"],
+        },
+      },
+      {
+        name: "delete_decks",
+        description: "Deletes specified decks and all their cards. This action cannot be undone.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            decks: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+              description: "Array of deck names to delete",
+            },
+          },
+          required: ["decks"],
+        },
+      },
+      {
+        name: "get_deck_stats",
+        description: "Gets statistics for specified decks including card counts and review information.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            decks: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+              description: "Array of deck names to get stats for",
+            },
+          },
+          required: ["decks"],
+        },
+      },
+      {
+        name: "move_cards_to_deck",
+        description: "Moves specified cards to a different deck.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            cards: {
+              type: "array",
+              items: {
+                type: "number",
+              },
+              description: "Array of card IDs to move",
+            },
+            deck: {
+              type: "string",
+              description: "Name of the destination deck",
+            },
+          },
+          required: ["cards", "deck"],
+        },
+      },
+    ],
   };
 });
 
 /**
- * Handler for the update_cards, add_card, get_due_cards and get_new_cards tools.
+ * Handler for all available tools including card management and deck management.
  */
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
@@ -230,83 +324,184 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     throw new Error(`No arguments provided for tool: ${name}`);
   }
 
-  switch (name) {
-    case "update_cards": {
-      const answers = args.answers as { cardId: number; ease: number }[];
-      const result = await client.card.answerCards({ answers: answers });
+  try {
+    switch (name) {
+      case "update_cards": {
+        const answers = args.answers as { cardId: number; ease: number }[];
+        const result = await client.card.answerCards({ answers: answers });
 
-      const successfulCards = answers
-        .filter((_, index) => result[index])
-        .map(card => card.cardId);
-      const failedCards = answers.filter((_, index) => !result[index]);
+        const successfulCards = answers
+          .filter((_, index) => result[index])
+          .map((card) => card.cardId);
+        const failedCards = answers.filter((_, index) => !result[index]);
 
-      if (failedCards.length > 0) {
-        const failedCardIds = failedCards.map(card => card.cardId);
-        throw new Error(`Failed to update cards with IDs: ${failedCardIds.join(', ')}`);
+        if (failedCards.length > 0) {
+          const failedCardIds = failedCards.map((card) => card.cardId);
+          throw new Error(
+            `Failed to update cards with IDs: ${failedCardIds.join(", ")}`
+          );
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Updated cards ${successfulCards.join(", ")}`,
+            },
+          ],
+        };
       }
 
-      return {
-        content: [{
-          type: "text",
-          text: `Updated cards ${successfulCards.join(", ")}`
-        }]
-      };
-    }
+      case "add_card": {
+        const front = String(args.front);
+        const back = String(args.back);
 
-    case "add_card": {
-      const front = String(args.front);
-      const back = String(args.back);
-
-      const note = {
-        note: {
-          deckName: 'Default',
-          fields: {
-            Back: back,
-            Front: front,
+        const note = {
+          note: {
+            deckName: "Default",
+            fields: {
+              Back: back,
+              Front: front,
+            },
+            modelName: "Basic",
           },
-          modelName: 'Basic',
-        },
-      };
+        };
 
-      const noteId = await client.note.addNote(note);
-      const cardId = (await client.card.findCards({ query: `nid:${noteId}` }))[0];
+        const noteId = await client.note.addNote(note);
+        const cardId = (
+          await client.card.findCards({ query: `nid:${noteId}` })
+        )[0];
 
-      return {
-        content: [{
-          type: "text",
-          text: `Created card with id ${cardId}`
-        }]
-      };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Created card with id ${cardId}`,
+            },
+          ],
+        };
+      }
+
+      case "get_due_cards": {
+        const num = Number(args.num);
+        const cards = await findCardsAndOrder("is:due");
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(cards.slice(0, num)),
+            },
+          ],
+        };
+      }
+
+      case "get_new_cards": {
+        const num = Number(args.num);
+        const cards = await findCardsAndOrder("is:new");
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(cards.slice(0, num)),
+            },
+          ],
+        };
+      }
+
+      case "list_decks": {
+        const deckNames = await client.deck.deckNames();
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(deckNames),
+            },
+          ],
+        };
+      }
+
+      case "list_decks_with_ids": {
+        const decksWithIds = await client.deck.deckNamesAndIds();
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(decksWithIds),
+            },
+          ],
+        };
+      }
+
+      case "create_deck": {
+        const deckName = String(args.deck);
+        const result = await client.deck.createDeck({ deck: deckName });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Created deck "${deckName}" with ID: ${result}`,
+            },
+          ],
+        };
+      }
+
+      case "delete_decks": {
+        const deckNames = args.decks as string[];
+        await client.deck.deleteDecks({ decks: deckNames, cardsToo: true });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Deleted decks: ${deckNames.join(", ")}`,
+            },
+          ],
+        };
+      }
+
+      case "get_deck_stats": {
+        const deckNames = args.decks as string[];
+        const stats = await client.deck.getDeckStats({ decks: deckNames });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(stats, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "move_cards_to_deck": {
+        const cardIds = args.cards as number[];
+        const targetDeck = String(args.deck);
+        await client.deck.changeDeck({ cards: cardIds, deck: targetDeck });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Moved ${cardIds.length} cards to deck "${targetDeck}"`,
+            },
+          ],
+        };
+      }
+
+      default:
+        throw new Error(`Unknown tool: ${name}`);
     }
-
-    case "get_due_cards": {
-      const num = Number(args.num);
-
-      const cards = await findCardsAndOrder("is:due");
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify(cards.slice(0, num))
-        }]
-      };
-    }
-
-    case "get_new_cards": {
-      const num = Number(args.num);
-
-      const cards = await findCardsAndOrder("is:new");
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify(cards.slice(0, num))
-        }]
-      };
-    }
-
-    default:
-      throw new Error("Unknown tool");
+  } catch (error) {
+    throw new Error(
+      `Error in tool ${name}: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
   }
 });
 
@@ -323,3 +518,4 @@ main().catch((error) => {
   console.error("Server error:", error);
   process.exit(1);
 });
+
