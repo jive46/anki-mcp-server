@@ -455,13 +455,35 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "get_all_cards_in_deck",
-        description: "Returns all cards in a specified deck regardless of their review status (new, due, suspended, etc.).",
+        description: "Returns all cards in a specified deck regardless of their review status (new, due, suspended, etc.). For large decks, use limit and offset parameters for pagination to avoid context overflow.",
         inputSchema: {
           type: "object",
           properties: {
             deck: {
               type: "string",
               description: "Name of the deck to get all cards from",
+            },
+            limit: {
+              type: "number",
+              description: "Maximum number of cards to return (default: 1000, max: 1000)",
+            },
+            offset: {
+              type: "number",
+              description: "Number of cards to skip from the beginning (default: 0)",
+            },
+          },
+          required: ["deck"],
+        },
+      },
+      {
+        name: "get_deck_card_count",
+        description: "Returns the total number of cards in a specified deck without retrieving the card data. Useful for checking deck size before pagination.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deck: {
+              type: "string",
+              description: "Name of the deck to count cards in",
             },
           },
           required: ["deck"],
@@ -770,14 +792,43 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "get_all_cards_in_deck": {
         const deckName = String(args.deck);
+        const limit = args.limit ? Math.min(Number(args.limit), 1000) : 1000;
+        const offset = args.offset ? Number(args.offset) : 0;
+        
         const query = `deck:"${deckName}"`;
-        const cards = await findCardsAndOrder(query);
+        const allCards = await findCardsAndOrder(query);
+        const totalCount = allCards.length;
+        const paginatedCards = allCards.slice(offset, offset + limit);
 
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(cards),
+              text: JSON.stringify({
+                cards: paginatedCards,
+                totalCount: totalCount,
+                offset: offset,
+                limit: limit,
+                hasMore: offset + limit < totalCount
+              }),
+            },
+          ],
+        };
+      }
+
+      case "get_deck_card_count": {
+        const deckName = String(args.deck);
+        const query = `deck:"${deckName}"`;
+        const cardIds = await client.card.findCards({ query: query });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                deck: deckName,
+                totalCards: cardIds.length
+              }),
             },
           ],
         };
